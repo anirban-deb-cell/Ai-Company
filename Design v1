@@ -1,0 +1,1029 @@
+# AI Company Operating System
+
+## Detailed Architecture & Low-Level Design (LLD)
+
+---
+
+# 1. Vision
+
+Build a platform where users can:
+
+* Create AI companies
+* Define agents/roles
+* Assign LLM providers
+* Import/export company packages
+* Execute workflows visually
+* Control execution through Kanban
+* Debug and replay AI work
+
+The platform acts as:
+
+> Jira + Temporal + AI Agent Runtime
+
+---
+
+# 2. Core Product Principles
+
+## 2.1 Human-Controlled AI
+
+The system must never become:
+
+* fully autonomous
+* uncontrollable
+* opaque
+
+Humans always:
+
+* approve
+* retry
+* edit
+* override
+
+---
+
+## 2.2 Task-Centric Execution
+
+The platform is NOT agent-chat based.
+
+Everything revolves around:
+
+* Tasks
+* Dependencies
+* Execution states
+* Structured context
+
+---
+
+## 2.3 Structured Data Flow
+
+Agents communicate through:
+
+* JSON schemas
+* Typed context
+* Workflow outputs
+
+NOT through raw prompt chaining.
+
+---
+
+# 3. High-Level Architecture
+
+```text
+                    ┌────────────────────┐
+                    │    Web Frontend    │
+                    │   React / NextJS   │
+                    └─────────┬──────────┘
+                              │
+                    REST/WebSocket APIs
+                              │
+                    ┌─────────▼──────────┐
+                    │    API Gateway     │
+                    │    Spring Boot     │
+                    └─────────┬──────────┘
+                              │
+       ┌──────────────────────┼──────────────────────┐
+       │                      │                      │
+       ▼                      ▼                      ▼
+┌──────────────┐     ┌────────────────┐     ┌────────────────┐
+│ Company      │     │ Workflow Graph │     │ Execution       │
+│ Management   │     │ Engine         │     │ Scheduler       │
+└──────┬───────┘     └────────┬───────┘     └────────┬───────┘
+       │                      │                      │
+       ▼                      ▼                      ▼
+┌──────────────┐     ┌────────────────┐     ┌────────────────┐
+│ Package      │     │ Context Engine │     │ Agent Runtime  │
+│ Parser       │     └────────────────┘     └────────┬───────┘
+└──────┬───────┘                                     │
+       │                                             ▼
+       ▼                                   ┌────────────────┐
+┌──────────────┐                           │ LLM Adapters   │
+│ Postgres DB  │                           │ OpenAI/Claude  │
+└──────────────┘                           └────────────────┘
+```
+
+---
+
+# 4. Microservice Strategy
+
+## MVP
+
+Use:
+
+* Modular monolith
+* Single Spring Boot application
+* Postgres
+* WebSocket support
+
+Reason:
+
+* Faster development
+* Easier debugging
+* Lower infrastructure complexity
+
+---
+
+## Future
+
+Split into:
+
+* API service
+* Workflow service
+* Execution workers
+* LLM gateway
+* Realtime service
+
+---
+
+# 5. Frontend Architecture
+
+## Tech Stack
+
+* Next.js
+* TypeScript
+* Tailwind
+* Zustand/Redux
+* React Query
+* DnD Kit for Kanban
+
+---
+
+# 5.1 Frontend Modules
+
+## Authentication Module
+
+* Login
+* API key management
+* Team management
+
+---
+
+## Company Builder
+
+Allows:
+
+* Create company
+* Add agents
+* Configure workflows
+* Upload package
+
+---
+
+## Kanban Board
+
+Core runtime UI.
+
+Columns:
+
+* Backlog
+* Ready
+* In Progress
+* Blocked
+* Review
+* Done
+
+Features:
+
+* drag-drop
+* task execution
+* approvals
+* retry
+* logs
+
+---
+
+## Execution Console
+
+Shows:
+
+* prompts
+* outputs
+* token usage
+* execution timeline
+* retry history
+
+---
+
+## Workflow Visualizer
+
+Graph/DAG view:
+
+* dependencies
+* execution state
+* blocked nodes
+
+---
+
+# 6. Backend Architecture
+
+## Backend Stack
+
+* Java 21
+* Spring Boot
+* Spring Web
+* Spring Data JPA
+* WebSockets
+* PostgreSQL
+* Flyway
+* Jackson
+
+---
+
+# 6.1 Package Structure
+
+```text
+com.companyos
+│
+├── api/
+├── auth/
+├── company/
+├── workflow/
+├── execution/
+├── agent/
+├── llm/
+├── kanban/
+├── context/
+├── parser/
+├── websocket/
+├── common/
+└── config/
+```
+
+---
+
+# 7. Core Domain Model
+
+---
+
+# 7.1 Company
+
+```java
+class Company {
+    UUID id;
+    String name;
+    String description;
+    CompanySettings settings;
+}
+```
+
+---
+
+# 7.2 AgentDefinition
+
+```java
+class AgentDefinition {
+    UUID id;
+    String role;
+    String description;
+    String promptTemplate;
+    ModelConfig modelConfig;
+}
+```
+
+---
+
+# 7.3 WorkflowDefinition
+
+```java
+class WorkflowDefinition {
+    UUID id;
+    String name;
+    List<TaskDefinition> tasks;
+}
+```
+
+---
+
+# 7.4 TaskDefinition
+
+```java
+class TaskDefinition {
+    UUID id;
+    String title;
+    String agentRole;
+
+    List<UUID> dependencies;
+
+    List<String> consumes;
+    List<String> produces;
+
+    boolean approvalRequired;
+}
+```
+
+---
+
+# 7.5 WorkflowExecution
+
+```java
+class WorkflowExecution {
+    UUID id;
+    UUID workflowId;
+    ExecutionStatus status;
+}
+```
+
+---
+
+# 7.6 TaskExecution
+
+```java
+class TaskExecution {
+    UUID id;
+    UUID taskDefinitionId;
+    UUID workflowExecutionId;
+
+    TaskStatus status;
+
+    JsonNode inputContext;
+    JsonNode outputContext;
+
+    int retryCount;
+
+    Instant startedAt;
+    Instant completedAt;
+}
+```
+
+---
+
+# 7.7 ExecutionLog
+
+```java
+class ExecutionLog {
+    UUID id;
+    UUID taskExecutionId;
+
+    String prompt;
+    String response;
+
+    String model;
+
+    int inputTokens;
+    int outputTokens;
+
+    Instant createdAt;
+}
+```
+
+---
+
+# 8. Database Schema
+
+## Core Tables
+
+### companies
+
+* id
+* name
+* description
+* created_at
+
+---
+
+### agents
+
+* id
+* company_id
+* role
+* prompt_template
+* model_provider
+* model_name
+
+---
+
+### workflows
+
+* id
+* company_id
+* name
+
+---
+
+### tasks
+
+* id
+* workflow_id
+* title
+* agent_role
+* approval_required
+
+---
+
+### task_dependencies
+
+* task_id
+* depends_on_task_id
+
+---
+
+### workflow_executions
+
+* id
+* workflow_id
+* status
+
+---
+
+### task_executions
+
+* id
+* workflow_execution_id
+* task_id
+* status
+* input_context
+* output_context
+* retry_count
+
+---
+
+### execution_logs
+
+* id
+* task_execution_id
+* prompt
+* response
+* model
+* token_usage
+
+---
+
+# 9. Workflow Graph Engine
+
+## Purpose
+
+Responsible for:
+
+* dependency management
+* task scheduling
+* execution readiness
+* workflow state tracking
+
+---
+
+# 9.1 DAG Model
+
+```text
+CEO
+ ↓
+CTO
+ ↓
+Product Owner
+ ↓
+ ┌─────────────┐
+ ↓             ↓
+Backend Dev   Frontend Dev
+ └──────┬──────┘
+        ↓
+      Tester
+```
+
+---
+
+# 9.2 Graph Construction
+
+Input:
+
+```yaml
+steps:
+  - id: cto
+    dependsOn:
+      - ceo
+```
+
+Converted into:
+
+```java
+Edge(from="ceo", to="cto")
+```
+
+---
+
+# 9.3 Scheduler Algorithm
+
+```java
+while (!workflow.completed()) {
+
+    List<TaskNode> readyNodes =
+        workflow.findReadyNodes();
+
+    for (TaskNode node : readyNodes) {
+        executor.execute(node);
+    }
+
+    Thread.sleep(1000);
+}
+```
+
+---
+
+# 9.4 Task States
+
+```text
+BACKLOG
+READY
+IN_PROGRESS
+BLOCKED
+WAITING_APPROVAL
+DONE
+FAILED
+```
+
+---
+
+# 10. Context Engine
+
+## Purpose
+
+Controls:
+
+* what data each task receives
+* prompt injection
+* schema validation
+
+---
+
+# 10.1 Context Flow
+
+Example:
+
+```text
+CEO produces: vision
+CTO consumes: vision
+```
+
+---
+
+# 10.2 Context Builder
+
+```java
+JsonNode buildContext(TaskNode node) {
+
+    List<String> required = node.getConsumes();
+
+    return contextStore.fetch(required);
+}
+```
+
+---
+
+# 10.3 Prompt Builder
+
+```java
+String buildPrompt(TaskNode node, JsonNode context) {
+
+    return templateEngine.render(
+        node.getPromptTemplate(),
+        context
+    );
+}
+```
+
+---
+
+# 11. Agent Runtime
+
+## Purpose
+
+Executes:
+
+* prompts
+* tool calls
+* LLM requests
+
+---
+
+# 11.1 Agent Interface
+
+```java
+interface AgentExecutor {
+
+    AgentResponse execute(
+        AgentRequest request
+    );
+}
+```
+
+---
+
+# 11.2 Execution Flow
+
+```text
+Task
+ ↓
+Context Build
+ ↓
+Prompt Render
+ ↓
+LLM Call
+ ↓
+Schema Validation
+ ↓
+Persist Output
+```
+
+---
+
+# 12. LLM Adapter Layer
+
+## Purpose
+
+Abstraction over providers.
+
+---
+
+# 12.1 Interface
+
+```java
+interface LLMProvider {
+
+    LLMResponse generate(
+        LLMRequest request
+    );
+}
+```
+
+---
+
+# 12.2 Implementations
+
+* OpenAIProvider
+* ClaudeProvider
+* LocalModelProvider
+
+---
+
+# 12.3 Model Routing
+
+Future:
+
+```text
+Planning → Claude
+Coding → Codex
+Cheap tasks → GPT-4.1-mini
+```
+
+---
+
+# 13. Kanban Runtime
+
+## Kanban = Execution Visualization
+
+NOT separate project management.
+
+---
+
+# 13.1 Column Mapping
+
+| Task State       | Kanban Column |
+| ---------------- | ------------- |
+| READY            | Ready         |
+| IN_PROGRESS      | In Progress   |
+| BLOCKED          | Blocked       |
+| WAITING_APPROVAL | Review        |
+| DONE             | Done          |
+
+---
+
+# 13.2 User Actions
+
+Users can:
+
+* Run task
+* Retry task
+* Approve task
+* Reject task
+* Edit context
+* Change model
+
+---
+
+# 14. Company Package Format
+
+## Structure
+
+```text
+company/
+├── company.yaml
+├── agents/
+├── workflows/
+├── tasks/
+├── prompts/
+└── policies/
+```
+
+---
+
+# 14.1 Example Workflow
+
+```yaml
+steps:
+  - id: ceo
+    produces: vision
+
+  - id: cto
+    dependsOn:
+      - ceo
+    consumes:
+      - vision
+```
+
+---
+
+# 15. Package Parser
+
+## Responsibilities
+
+* Parse YAML
+* Validate schema
+* Build runtime graph
+* Persist definitions
+
+---
+
+# 15.1 Parser Flow
+
+```text
+Upload Package
+ ↓
+Read YAML
+ ↓
+Validate Schema
+ ↓
+Create Runtime Objects
+ ↓
+Persist to DB
+```
+
+---
+
+# 16. Failure Handling
+
+## Failure Types
+
+```text
+MODEL_ERROR
+RATE_LIMIT
+INVALID_SCHEMA
+DEPENDENCY_FAILURE
+USER_REJECTION
+```
+
+---
+
+# 16.1 Retry Strategy
+
+```yaml
+retry:
+  maxAttempts: 3
+```
+
+---
+
+# 16.2 Blocked Tasks
+
+Blocked tasks:
+
+* stop downstream execution
+* appear in Kanban
+* require human intervention
+
+---
+
+# 17. Approval System
+
+## Purpose
+
+Human checkpoint before:
+
+* code generation
+* deployments
+* expensive operations
+
+---
+
+# 17.1 Approval Flow
+
+```text
+Task Completed
+ ↓
+WAITING_APPROVAL
+ ↓
+User Approves
+ ↓
+DONE
+```
+
+---
+
+# 18. Realtime Architecture
+
+## WebSocket Events
+
+```text
+TASK_STARTED
+TASK_COMPLETED
+TASK_BLOCKED
+TASK_APPROVED
+```
+
+---
+
+# 18.1 Frontend Updates
+
+Board updates in realtime:
+
+* card movement
+* logs
+* outputs
+
+---
+
+# 19. Security Architecture
+
+## API Keys
+
+Users provide:
+
+* OpenAI key
+* Anthropic key
+
+Encrypted in DB.
+
+---
+
+# 19.1 Execution Isolation
+
+Future:
+
+* sandboxed execution
+* isolated containers
+
+---
+
+# 20. Observability
+
+## Metrics
+
+Track:
+
+* token usage
+* execution time
+* retries
+* failures
+* costs
+
+---
+
+# 20.1 Logs
+
+Each task stores:
+
+* prompt
+* response
+* timing
+* model
+
+---
+
+# 21. MVP Implementation Plan
+
+# Phase 1
+
+## Goal
+
+Basic workflow execution.
+
+### Features
+
+* create workflow
+* create tasks
+* execute sequentially
+* Kanban UI
+* OpenAI integration
+
+### Timeline
+
+1-2 weeks
+
+---
+
+# Phase 2
+
+## Goal
+
+Graph execution.
+
+### Features
+
+* dependencies
+* DAG execution
+* approvals
+* retries
+* structured context
+
+### Timeline
+
+2 weeks
+
+---
+
+# Phase 3
+
+## Goal
+
+AI companies.
+
+### Features
+
+* company packages
+* parser
+* role-based agents
+* import/export
+
+### Timeline
+
+2 weeks
+
+---
+
+# Phase 4
+
+## Goal
+
+Software company runtime.
+
+### Features
+
+* GitHub integration
+* Codex integration
+* PR generation
+* replay/debug
+
+### Timeline
+
+3-4 weeks
+
+---
+
+# 22. Recommended MVP Scope
+
+DO BUILD:
+
+* Kanban
+* workflow engine
+* approvals
+* retries
+* OpenAI/Claude support
+
+DO NOT BUILD:
+
+* autonomous loops
+* distributed workers
+* memory systems
+* self-improving agents
+
+---
+
+# 23. Final Product Positioning
+
+NOT:
+
+* AI chatbot
+* IDE competitor
+* autonomous AGI company
+
+YES:
+
+> AI-native execution operating system
+
+or
+
+> Jira for AI companies
+
+---
+
+# 24. Long-Term Vision
+
+Future platform capabilities:
+
+* company marketplace
+* reusable workflows
+* plugin ecosystem
+* team collaboration
+* autonomous CI/CD
+* deployment pipelines
+* multi-company orchestration
+
+---
+
+# 25. Final Insight
+
+The product's real value is NOT:
+
+* prompts
+* agents
+* models
+
+The value is:
+
+> Controlled, visible, structured AI work execution.
